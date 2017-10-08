@@ -4,18 +4,24 @@
 import numpy
 import random
 
-def randlist(length, lo=0, hi=10):
+lo = -1
+hi = 1
+
+def rand(lo=lo, hi=hi):
+    return random.random() * (hi - lo) + lo
+
+def randlist(length, lo=lo, hi=hi):
     '''returns a list random ints of given length'''
-    return [random.randint(lo, hi) for _ in range(length)]
+    return [rand(lo, hi) for _ in range(length)]
+
+def randmatrix(n_rows, n_cols, lo=lo, hi=hi):
+    return to_matrix(randlist(n_rows * n_cols, lo, hi), n_rows, n_cols)
+
+def randvector(n_elems, lo=lo, hi=hi):
+    return numpy.array(randlist(n_elems, lo, hi))
 
 def to_matrix(values, n_rows, n_cols):
     return numpy.matrix(values).reshape(n_rows, n_cols)
-
-def randmatrix(n_rows, n_cols):
-    return to_matrix(randlist(n_rows * n_cols), n_rows, n_cols)
-
-def randvector(n_elems):
-    return numpy.array(randlist(n_elems))
 
 def flatten(matr):
     return numpy.array(matr).ravel()
