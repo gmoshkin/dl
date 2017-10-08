@@ -8,18 +8,7 @@ from activations import (
 )
 from numpy import array
 from autoencoder import Autoencoder
-
-def randlist(length, lo=0, hi=10):
-    '''returns a list random ints of given length'''
-    import random
-    return [random.randint(lo, hi) for _ in range(length)]
-
-def matrix(values, n_rows, n_cols):
-    import numpy
-    return numpy.matrix(values).reshape(n_rows, n_cols)
-
-def randmatrix(n_rows, n_cols):
-    return matrix(randlist(n_rows * n_cols), n_rows, n_cols)
+from utils import flatten, randmatrix
 
 def gen_net(input_dims, mid_layer_dims, n_layers, activation_function):
     layers_dims_half = [input_dims]

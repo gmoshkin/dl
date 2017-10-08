@@ -1,7 +1,8 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from numpy import matrix, array
+from utils import to_matrix, flatten
+from numpy import multiply
 # Implementation of layers used within neural networks
 
 class BaseLayer(object):
@@ -99,10 +100,10 @@ class FCLayer(BaseLayer):
         """
         :return w: current layer weights as a numpy one-dimensional vector
         """
-        return array(self.weights).ravel()
+        return flatten(self.weights)
 
     def reshape(self, vector):
-        return matrix(vector).reshape(self.num_outputs, self.num_inputs)
+        return to_matrix(vector, self.num_outputs, self.num_inputs)
 
     def set_weights(self, w):
         """
