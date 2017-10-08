@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from numpy import exp, power
+from numpy import exp, power, multiply
 # Implementation of activation functions used within neural networks
 
 class BaseActivationFunction(object):
@@ -69,7 +69,7 @@ class SigmoidActivationFunction(BaseActivationFunction):
 class ReluActivationFunction(BaseActivationFunction):
 
     def val(self, inputs):
-        return inputs * (inputs > 0)
+        return multiply(inputs, inputs > 0)
 
     def deriv(self, inputs):
         return 1
