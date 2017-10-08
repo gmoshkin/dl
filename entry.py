@@ -19,9 +19,18 @@ def gen_net(input_dims, mid_layer_dims, n_layers, activation_function):
     for indim, outdim in zip(layers_dims[:-1], layers_dims[1:]):
         total_n_weights += indim * outdim
         layers.append(FCLayer(shape=(indim, outdim), afun=activation_function))
+
+    weights = []
+    for l in layers[:len(layers) // 2]:
+        w = randmatrix(l.shape[1], l.shape[0])
+        weights.append(w)
+        l.set_weights(flatten(w))
+
+    for l, w in zip(layers[len(layers) // 2:], reversed(weights)):
+        l.set_weights(flatten(w.T))
+
     net = FFNet(layers)
-    net.set_weights(array(randlist(total_n_weights)))
-    return net
+    return net, weights
 
 def gen_inputs(input_dims, batch_size):
     return randmatrix(input_dims, batch_size)
@@ -34,7 +43,7 @@ if __name__ == "__main__":
     batch_size = 4
     activation_function = SigmoidActivationFunction()
 
-    net = gen_net(input_dims, mid_layer_dims, n_layers, activation_function)
+    net, w = gen_net(input_dims, mid_layer_dims, n_layers, activation_function)
     net.print_weights()
 
     inputs = gen_inputs(input_dims, batch_size)
@@ -42,8 +51,12 @@ if __name__ == "__main__":
     print("inputs")
     print(inputs)
     print("outputs")
-    print(net.compute_outputs(inputs))
+    outputs = net.compute_outputs(inputs)
+    print(outputs)
 
     ac = Autoencoder(net.layers)
+    loss, loss_grad = ac.compute_loss(inputs)
     print("loss")
-    print(ac.compute_loss(inputs))
+    print(loss)
+    print("loss_grad")
+    print(loss_grad)

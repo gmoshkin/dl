@@ -24,8 +24,10 @@ class Autoencoder:
         :return loss: loss value, a number
         :return loss_grad: loss gradient, numpy vector of length num_params
         """
-        diff = inputs - self.net.compute_outputs(inputs)
-        return norm(diff) / (2 * inputs.shape[1])
+        diff = self.net.compute_outputs(inputs) - inputs
+        loss = norm(diff) / (2 * inputs.shape[1])
+        loss_grad = self.net.compute_loss_grad(diff)
+        return loss, loss_grad
 
     def compute_hessvec(self, p):
         """

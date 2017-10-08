@@ -132,8 +132,9 @@ class FCLayer(BaseLayer):
         :return outputs: layer activations, numpy matrix of size num_outputs x
         num_objects
         """
-        self.linear_parts = self.weights * inputs
-        self.activations = self.afun(self.linear_parts)
+        self.prev_activations = inputs # z₍ᵢ₋₁₎
+        self.linear_parts = self.weights * inputs # uᵢ
+        self.activations = self.afun(self.linear_parts) # zᵢ
         return self.activations
 
     def backward(self, derivs):
@@ -147,7 +148,15 @@ class FCLayer(BaseLayer):
         :return w_derivs: loss derivatives w.r.t. layer parameters, numpy vector
         of length num_params
         """
-        raise NotImplementedError()
+        # g'(uⁱ)
+        afun_derivs = self.afun.deriv(self.linear_parts)
+        # ∇uⁱL=∇zⁱL⊙ g'(uⁱ)
+        self.linear_derivs = multiply(derivs, afun_derivs)
+        # ∇wⁱL = ∇uⁱL⋅z⁽ⁱ¯¹⁾ᵀ
+        self.w_derivs = self.linear_derivs * self.prev_activations.T
+        # ∇z⁽ⁱ¯¹⁾L = wⁱᵀ⋅∇uⁱL
+        self.input_derivs = self.weights.T * self.linear_derivs
+        return self.input_derivs, flatten(self.w_derivs)
 
     def Rp_forward(self, Rp_inputs):
         """
@@ -177,4 +186,4 @@ class FCLayer(BaseLayer):
         :return outputs: activations computed in forward pass, numpy matrix of
         size num_outputs x num_objects
         """
-        raise NotImplementedError()
+        return self.activations
