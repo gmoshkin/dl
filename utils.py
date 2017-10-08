@@ -14,5 +14,8 @@ def to_matrix(values, n_rows, n_cols):
 def randmatrix(n_rows, n_cols):
     return to_matrix(randlist(n_rows * n_cols), n_rows, n_cols)
 
+def randvector(n_elems):
+    return numpy.array(randlist(n_elems))
+
 def flatten(matr):
     return numpy.array(matr).ravel()

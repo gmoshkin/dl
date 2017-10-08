@@ -5,6 +5,8 @@
 
 import ffnet
 from numpy.linalg import norm
+from numpy import dot
+from sys import float_info
 
 class Autoencoder:
 
@@ -17,6 +19,9 @@ class Autoencoder:
         if self.net.layers[0].shape[0] != self.net.layers[-1].shape[1]:
             raise ValueError('In the given autoencoder number of inputs and outputs is different!')
 
+        self.loss = None
+        self.loss_grad = None
+
     def compute_loss(self, inputs):
         """
         Computes autoencoder loss value and loss gradient using given batch of data
@@ -25,9 +30,21 @@ class Autoencoder:
         :return loss_grad: loss gradient, numpy vector of length num_params
         """
         diff = self.net.compute_outputs(inputs) - inputs
-        loss = norm(diff) / (2 * inputs.shape[1])
-        loss_grad = self.net.compute_loss_grad(diff)
-        return loss, loss_grad
+        self.loss = norm(diff) / (2 * inputs.shape[1])
+        self.loss_grad = self.net.compute_loss_grad(diff)
+        return self.loss, self.loss_grad
+
+    def compute_loss_grad_accuracy(self, inputs, vector_p, eps=float_info.epsilon):
+        if self.loss is not None and self.loss_grad is not None:
+            loss, loss_grad = self.loss, self.loss_grad
+        else:
+            loss, loss_grad = self.compute_loss(inputs)
+        self.net.set_weights(self.net.get_weights() + vector_p * eps)
+        loss_ofs, _ = self.compute_loss(inputs)
+        lhs = dot(loss_grad, vector_p)
+        rhs = (loss_ofs - loss) / eps
+        return lhs - rhs
+
 
     def compute_hessvec(self, p):
         """

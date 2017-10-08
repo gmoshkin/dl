@@ -8,7 +8,7 @@ from activations import (
 )
 from numpy import array
 from autoencoder import Autoencoder
-from utils import flatten, randmatrix
+from utils import flatten, randmatrix, randvector
 
 def gen_net(input_dims, mid_layer_dims, n_layers, activation_function):
     layers_dims_half = [input_dims]
@@ -41,9 +41,9 @@ if __name__ == "__main__":
     mid_layer_dims = 2
     n_layers = 3
     batch_size = 4
-    activation_function = SigmoidActivationFunction()
+    activation_function = ReluActivationFunction()
 
-    net, w = gen_net(input_dims, mid_layer_dims, n_layers, activation_function)
+    net, weights = gen_net(input_dims, mid_layer_dims, n_layers, activation_function)
     net.print_weights()
 
     inputs = gen_inputs(input_dims, batch_size)
@@ -60,3 +60,8 @@ if __name__ == "__main__":
     print(loss)
     print("loss_grad")
     print(loss_grad)
+
+    print("loss accuracy")
+    vector_p = randvector(sum(w.size for w in weights) * 2)
+    print(ac.compute_loss_grad_accuracy(inputs, vector_p))
+
