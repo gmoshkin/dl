@@ -7,6 +7,7 @@ from activations import (
     SigmoidActivationFunction, LinearActivationFunction, ReluActivationFunction
 )
 from numpy import array
+from autoencoder import Autoencoder
 
 def randlist(length, lo=0, hi=10):
     '''returns a list random ints of given length'''
@@ -53,3 +54,7 @@ if __name__ == "__main__":
     print(inputs)
     print("outputs")
     print(net.compute_outputs(inputs))
+
+    ac = Autoencoder(net.layers)
+    print("loss")
+    print(ac.compute_loss(inputs))

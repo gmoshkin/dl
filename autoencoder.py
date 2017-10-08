@@ -4,7 +4,7 @@
 # Implementation of autoencoder using general feed-forward neural network
 
 import ffnet
-
+from numpy.linalg import norm
 
 class Autoencoder:
 
@@ -24,7 +24,8 @@ class Autoencoder:
         :return loss: loss value, a number
         :return loss_grad: loss gradient, numpy vector of length num_params
         """
-        pass
+        diff = inputs - self.net.compute_outputs(inputs)
+        return norm(diff) / (2 * inputs.shape[1])
 
     def compute_hessvec(self, p):
         """
