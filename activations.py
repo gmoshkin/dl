@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from numpy import exp
+from numpy import exp, power
 # Implementation of activation functions used within neural networks
 
 class BaseActivationFunction(object):
@@ -59,11 +59,11 @@ class SigmoidActivationFunction(BaseActivationFunction):
 
     def deriv(self, inputs):
         exp_inputs = exp(inputs)
-        return exp_inputs / (1 + exp_inputs) ** 2
+        return exp_inputs / power(1 + exp_inputs, 2)
 
     def second_deriv(self, inputs):
         exp_inputs = exp(inputs)
-        return exp_inputs * (exp_inputs - 1) / (1 + exp_inputs) ** 3
+        return exp_inputs * (exp_inputs - 1) / power(1 + exp_inputs, 3)
 
 
 class ReluActivationFunction(BaseActivationFunction):
