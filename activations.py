@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from numpy import exp, square as sqr, power as pow
+from numpy import exp
 # Implementation of activation functions used within neural networks
 
 class BaseActivationFunction(object):
@@ -29,6 +29,11 @@ class BaseActivationFunction(object):
         :return: result, numpy array of inputs size
         """
         raise NotImplementedError('This function must be implemented within child class!')
+
+    def __call__(self, *args):
+        return self.val(*args)
+
+
 
 
 class LinearActivationFunction(BaseActivationFunction):
