@@ -5,8 +5,9 @@
 
 import ffnet
 from numpy.linalg import norm
-from numpy import dot
+from numpy import dot, array, r_
 from sys import float_info
+from utils import flatten
 
 class Autoencoder:
 
@@ -31,18 +32,35 @@ class Autoencoder:
         """
         diff = self.net.compute_outputs(inputs) - inputs
         self.loss = norm(diff) / (2 * inputs.shape[1])
-        self.loss_grad = self.net.compute_loss_grad(diff)
+        self.net.compute_loss_grad(diff)
+        loss_grad = array([])
+        for l1, l2 in zip(self.net.layers, reversed(self.net.layers)):
+            loss_grad = r_[loss_grad,
+                           flatten(l1.w_derivs + l2.w_derivs.T)]
+        print("loss_grad raw")
+        print(self.net.layers[0].w_derivs)
+        print(self.net.layers[1].w_derivs)
+        self.loss_grad = loss_grad
         return self.loss, self.loss_grad
 
-    def compute_loss_grad_accuracy(self, inputs, vector_p, eps=float_info.epsilon):
+    def compute_loss_grad_accuracy(self, inputs, vector_p, eps=0.001):
         if self.loss is not None and self.loss_grad is not None:
             loss, loss_grad = self.loss, self.loss_grad
         else:
             loss, loss_grad = self.compute_loss(inputs)
-        self.net.set_weights(self.net.get_weights() + vector_p * eps)
+        ofs_weights = self.net.get_weights() + vector_p * eps
+        print("offset weights")
+        print(ofs_weights)
+        self.net.set_weights(ofs_weights)
         loss_ofs, _ = self.compute_loss(inputs)
         lhs = dot(loss_grad, vector_p)
+        print("lhs")
+        print(lhs)
         rhs = (loss_ofs - loss) / eps
+        print("loss_ofs")
+        print(loss_ofs)
+        print("loss")
+        print(loss)
         return lhs - rhs
 
 
