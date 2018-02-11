@@ -6,6 +6,7 @@ from layers import FCLayer
 from activations import (
     SigmoidActivationFunction, LinearActivationFunction, ReluActivationFunction
 )
+import numpy as np
 from numpy import array, matrix
 from autoencoder import Autoencoder
 from utils import flatten, randmatrix, randvector
@@ -53,10 +54,24 @@ if __name__ == "__main__":
     # net.print_weights()
     weights = [matrix('1 2 1; 3 4 2')]
     weights.append(weights[0].T)
-    net = FFNet([make_layer(w) for w in weights])
+    layers = [
+        FCLayer((4, 3), LinearActivationFunction()),
+        FCLayer((3, 2), LinearActivationFunction()),
+        FCLayer((2, 3), LinearActivationFunction()),
+        FCLayer((3, 4), LinearActivationFunction()),
+    ]
+    layers[0].set_weights(matrix('.5 0 0 0;0 .5 0 0;0 0 .5 0'))
+    layers[1].set_weights(matrix('.2 0 0;0 .1 0'))
+    layers[2].set_weights(matrix('5 0;0 10;5 0'))
+    layers[3].set_weights(matrix('2 0 0;0 2 0;2 0 0;0 2 0'))
+    net = FFNet(layers)
 
     # inputs = gen_inputs(input_dims, batch_size)
-    inputs = matrix('3;0;-1')
+    m = matrix([
+        [7, 9, 4, 1, 1, 0, 3, 3, 5, 6, 5, 7, 2, 9, 1, 4, 6, 3, 6, 7],
+        [3, 6, 4, 3, 6, 6, 9, 2, 2, 6, 0, 4, 5, 2, 8, 5, 1, 4, 2, 1]
+    ])
+    inputs = np.concatenate((m, m))[:,:10]
 
     print("inputs")
     print(inputs)
@@ -78,7 +93,8 @@ if __name__ == "__main__":
     print("loss accuracy")
     vector_p = array([.1, .05, .07, .1, .05, .07, .1, .1, .05, .05, .07, .07])
     vector_p = array([100,500,700, 100,500,700, 100, 100,500,500,700,700])
+    vector_p = array([1000000] * len(net.get_weights()))
     print("vector_p")
     print(vector_p)
     print(ac.compute_loss_grad_accuracy(inputs, vector_p))
-
+    print(ac.compute_loss_grad_accuracy_imag(inputs, vector_p))

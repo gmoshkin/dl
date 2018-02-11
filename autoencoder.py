@@ -30,20 +30,25 @@ class Autoencoder:
         :return loss: loss value, a number
         :return loss_grad: loss gradient, numpy vector of length num_params
         """
-        diff = self.net.compute_outputs(inputs) - inputs
+        new_output = self.net.compute_outputs(inputs)
+        print("new_output:", new_output, 'shape:', new_output.shape)
+
+        diff = new_output - inputs
+        print("diff:", diff, 'shape:', diff.shape)
         self.loss = compute_norm(diff) / (2 * inputs.shape[1]) # wtf is this?
+        print("loss:", self.loss)
         self.net.compute_loss_grad(diff)
         loss_grad = array([])
         for l1, l2 in zip(self.net.layers, reversed(self.net.layers)):
             loss_grad = r_[loss_grad,
                            flatten(l1.w_derivs + l2.w_derivs.T)]
         print("loss_grad raw")
-        print(self.net.layers[0].w_derivs)
-        print(self.net.layers[1].w_derivs)
+        for l in self.net.layers:
+            print(l.w_derivs, 'shape:', l.w_derivs.shape)
         self.loss_grad = loss_grad
         return self.loss, self.loss_grad
 
-    def compute_loss_grad_accuracy(self, inputs, vector_p, eps=0.001):
+    def compute_loss_grad_accuracy(self, inputs, vector_p, eps=0.00000001):
         if self.loss is not None and self.loss_grad is not None:
             loss, loss_grad = self.loss, self.loss_grad
         else:
@@ -53,15 +58,33 @@ class Autoencoder:
         print(ofs_weights)
         self.net.set_weights(ofs_weights)
         loss_ofs, _ = self.compute_loss(inputs)
+        print("loss_grad:", loss_grad)
         lhs = dot(loss_grad, vector_p)
-        print("lhs")
-        print(lhs)
+        print("dot(loss_grad, vector_p):", lhs)
         rhs = (loss_ofs - loss) / eps
-        print("loss_ofs")
-        print(loss_ofs)
-        print("loss")
-        print(loss)
+        print("loss_ofs:", loss_ofs)
+        print("loss:", loss)
+        print("(loss_ofs - loss) / eps:", rhs)
         return lhs - rhs
+
+    def compute_loss_grad_accuracy_imag(self, inputs, vector_p, eps=0.00000001):
+        if self.loss is not None and self.loss_grad is not None:
+            loss, loss_grad = self.loss, self.loss_grad
+        else:
+            loss, loss_grad = self.compute_loss(inputs)
+        ofs_weights = self.net.get_weights() + vector_p * eps * 1j
+        print("offset weights")
+        print(ofs_weights)
+        self.net.set_weights(ofs_weights)
+        loss_ofs, _ = self.compute_loss(inputs)
+        print("loss_grad:", loss_grad)
+        lhs = dot(loss_grad, vector_p)
+        print("dot(loss_grad, vector_p):", lhs)
+        rhs = (loss_ofs.imag) / eps
+        print("loss_ofs:", loss_ofs)
+        print("(loss_ofs.imag) / eps:", rhs)
+        return lhs - rhs
+
 
 
     def compute_hessvec(self, p):
