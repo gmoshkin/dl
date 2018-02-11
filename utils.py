@@ -25,3 +25,8 @@ def to_matrix(values, n_rows, n_cols):
 
 def flatten(matr):
     return numpy.array(matr).ravel()
+
+def compute_norm(matr):
+    N = matr.shape[1]
+    per_batch = numpy.einsum('ij,ij->j', matr, matr) / 2
+    return sum(per_batch) / N

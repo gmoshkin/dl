@@ -7,7 +7,7 @@ import ffnet
 from numpy.linalg import norm
 from numpy import dot, array, r_
 from sys import float_info
-from utils import flatten
+from utils import flatten, compute_norm
 
 class Autoencoder:
 
@@ -31,7 +31,7 @@ class Autoencoder:
         :return loss_grad: loss gradient, numpy vector of length num_params
         """
         diff = self.net.compute_outputs(inputs) - inputs
-        self.loss = norm(diff) / (2 * inputs.shape[1])
+        self.loss = compute_norm(diff) / (2 * inputs.shape[1]) # wtf is this?
         self.net.compute_loss_grad(diff)
         loss_grad = array([])
         for l1, l2 in zip(self.net.layers, reversed(self.net.layers)):
