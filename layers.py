@@ -167,6 +167,13 @@ class FCLayer(BaseLayer):
         :return Rp_outputs: Rp layer activations, numpy matrix of size
         num_outputs x num_objects
         """
+        # Rₚ{z⁽ⁱ¯¹⁾}
+        self.prev_Rp_z = Rp_inputs
+        # Rₚ{uⁱ} = Wⁱ⋅Rₚ{z⁽ⁱ¯¹⁾} + Pⁱ⋅z⁽ⁱ¯¹⁾
+        self.Rp_u = (self.weights * Rp_inputs +
+                     self.p_layer * self.prev_activations)
+        # Rₚ{zⁱ} = g'(uⁱ)⊙ Rₚ{uⁱ}
+        self.Rp_outputs = multiply(self.afun_derivs, self.Rp_u)
         raise NotImplementedError()
 
     def Rp_backward(self, Rp_derivs):
