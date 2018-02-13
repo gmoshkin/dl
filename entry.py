@@ -9,7 +9,16 @@ from activations import (
 import numpy as np
 from numpy import array, matrix
 from autoencoder import Autoencoder
-from utils import flatten, randmatrix, randvector
+from utils import flatten, randmatrix, randvector, lerp, show_digit
+from data import read_mnist, get_inputs
+import sys
+import torch as tch
+import torch.nn as tnn
+import torch.autograd as tad
+
+NUM_EPOCH = 1000
+MINIBATCH_SIZE=200
+N_LAYERS = 4
 
 def gen_net(input_dims, mid_layer_dims, n_layers, activation_function):
     layers_dims_half = [input_dims]
@@ -42,6 +51,114 @@ def make_layer(weights):
     layer.set_weights(flatten(weights))
     return layer
 
+class TorchModel(tnn.Module):
+
+    def __init__(self, my_layers):
+        super(TorchModel, self).__init__()
+        self.layers = []
+        for i, ml in enumerate(my_layers):
+            new_layer = tnn.Linear(*ml.shape, bias=False)
+            self.layers.append(new_layer)
+            self.__setattr__('layer_{}'.format(i), new_layer)
+
+    def forward(self, inputs):
+        curr_out = inputs
+        for l in self.layers:
+            curr_out = l(curr_out)
+        return curr_out
+
+def train(inputs):
+    # TODO: compare with what pytorch does
+    num_features = inputs.shape[0]
+    middle_size = 2
+    half_num_layers = N_LAYERS // 2
+    def make_layer(size_in, size_out):
+        return FCLayer((size_in, size_out), LinearActivationFunction())
+        # return (size_in, size_out)
+    layers = []
+    for i in range(half_num_layers):
+        lesser = int(lerp(middle_size, num_features, i, half_num_layers))
+        greater = int(lerp(middle_size, num_features, i + 1, half_num_layers))
+        layers = [make_layer(greater, lesser)] + layers + [make_layer(lesser, greater)]
+    ae = Autoencoder(layers)
+    ae.init_weights()
+    print('Network has {} parameters'.format(ae.net.params_number))
+
+    digit_in = inputs[:,0].reshape(-1, 1)
+    digit_size = int(np.sqrt(digit_in.size))
+    show_digit(digit_in.reshape(digit_size, digit_size))
+
+    print('my net before:')
+    my_out = ae.net.compute_outputs(digit_in)
+    show_digit(my_out.reshape(digit_size, digit_size))
+
+    tnet = TorchModel(ae.net.layers)
+    for p, l in zip(tnet.parameters(), ae.net.layers):
+        l.set_weights(p.data.numpy().flatten())
+
+    print('my net after:')
+    my_out = ae.net.compute_outputs(digit_in)
+    show_digit(my_out.reshape(digit_size, digit_size))
+
+    print('torch net:')
+    torch_out = tnet(tad.Variable(tch.Tensor(digit_in.T))).data.numpy()
+    show_digit(torch_out.reshape(digit_size, digit_size))
+
+    torch_sgd(tnet, inputs, num_epoch=NUM_EPOCH, minibatch_size=MINIBATCH_SIZE,
+              display=True)
+    # ae.run_sgd(inputs, num_epoch=NUM_EPOCH, minibatch_size=MINIBATCH_SIZE,
+    #            display=True)
+
+def torch_sgd(net, inputs, num_epoch=NUM_EPOCH, minibatch_size=MINIBATCH_SIZE,
+              display=True):
+    optimizer = tch.optim.SGD(net.parameters(), lr=.01)
+    import time, utils
+    start_time = time.time()
+
+    def count_loss(inputs, outputs):
+        return ((inputs - outputs) ** 2).sum() / 2 / inputs.size()[1]
+    def to_torch(matrix):
+        return tad.Variable(tch.Tensor(matrix))
+
+    for epoch in range(num_epoch):
+        minibatch = utils.get_random_sample(inputs, minibatch_size)
+        torch_minibatch = to_torch(minibatch.T)
+        optimizer.zero_grad()
+        outputs = net(torch_minibatch)
+        loss = count_loss(torch_minibatch, outputs)
+        loss.backward()
+
+        if epoch % 20 == 0:
+            digit_in = minibatch[:,0]
+            digit_size = int(np.sqrt(digit_in.size))
+            print("input:")
+            utils.show_digit(digit_in.reshape(digit_size, digit_size))
+            digit_out = net(to_torch(digit_in.T)).data.numpy()
+            print("output:")
+            utils.show_digit(digit_out.reshape(digit_size, digit_size))
+
+        optimizer.step()
+
+        if display:
+            print("[{e}] loss: {l:0.4f} time: {t:0.2f}s".format(
+                l=loss.data[0],
+                e=epoch,
+                t=(time.time() - start_time)
+            ))
+
+def test_grad():
+    layer = FCLayer((3, 3), LinearActivationFunction())
+    layer.set_weights(matrix('1 2 4;2 1 3;1 3 1'))
+    net = FFNet([layer])
+    inputs = matrix('1;1;1')
+    print('inputs:', inputs)
+    outputs = net.compute_outputs(inputs)
+    print('outputs:', outputs)
+    loss_derivs = outputs - inputs
+    print('loss_derivs:', loss_derivs)
+    loss_grad = net.compute_loss_grad(loss_derivs)
+    print('loss_grad:', loss_grad)
+
 def test_data(data):
     index = np.random.randint(data[0].shape[0])
     show_digit(data[0][index])
@@ -50,6 +167,9 @@ def test_data(data):
 if __name__ == "__main__":
     data = read_mnist('mnist', normalize=True)
     # test_data(data)
+
+    train(get_inputs(data[0]))
+    # test_grad()
 
     sys.exit(0)
 
