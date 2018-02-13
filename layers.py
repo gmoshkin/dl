@@ -149,9 +149,9 @@ class FCLayer(BaseLayer):
         of length num_params
         """
         # g'(uⁱ)
-        afun_derivs = self.afun.deriv(self.linear_parts)
+        self.afun_derivs = self.afun.deriv(self.linear_parts)
         # ∇uⁱL=∇zⁱL⊙ g'(uⁱ)
-        self.linear_derivs = multiply(derivs, afun_derivs)
+        self.linear_derivs = multiply(derivs, self.afun_derivs)
         # ∇wⁱL = ∇uⁱL⋅z⁽ⁱ¯¹⁾ᵀ
         self.w_derivs = self.linear_derivs * self.prev_activations.T
         # ∇z⁽ⁱ¯¹⁾L = wⁱᵀ⋅∇uⁱL
