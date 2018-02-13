@@ -42,8 +42,17 @@ def make_layer(weights):
     layer.set_weights(flatten(weights))
     return layer
 
+def test_data(data):
+    index = np.random.randint(data[0].shape[0])
+    show_digit(data[0][index])
+    print(data[1][index])
 
 if __name__ == "__main__":
+    data = read_mnist('mnist', normalize=True)
+    # test_data(data)
+
+    sys.exit(0)
+
     input_dims = 4
     mid_layer_dims = 2
     n_layers = 3
