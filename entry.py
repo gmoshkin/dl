@@ -20,9 +20,14 @@ import utils
 NUM_EPOCH = 1000
 MINIBATCH_SIZE=200
 N_LAYERS = 4
+STEP_SIZE = 0.01
 DO_TORCH = True
 DO_MINE = False
 MIDDLE_SIZE = 10
+ACTIVATIONS = 'sigmoid'
+# ACTIVATIONS = 'relu'
+# ACTIVATIONS = 'linear'
+OPTIM = 'sgd' # 'adam' 'rms'
 
 def gen_net(input_dims, mid_layer_dims, n_layers, activation_function):
     layers_dims_half = [input_dims]
@@ -60,15 +65,24 @@ class TorchModel(tnn.Module):
     def __init__(self, my_layers):
         super(TorchModel, self).__init__()
         self.layers = []
+        self.activations = []
         for i, ml in enumerate(my_layers):
             new_layer = tnn.Linear(*ml.shape, bias=True)
             self.layers.append(new_layer)
             self.__setattr__('layer_{}'.format(i), new_layer)
+            if ACTIVATIONS == 'sigmoid':
+                new_activation = tnn.Sigmoid()
+            elif ACTIVATIONS == 'relu':
+                new_activation = tnn.ReLU()
+            else:
+                new_activation = lambda x: x
+            self.activations.append(new_activation)
+            self.__setattr__('activation_{}'.format(i), new_activation)
 
     def forward(self, inputs):
         curr_out = inputs
-        for l in self.layers:
-            curr_out = l(curr_out)
+        for l, f in zip(self.layers, self.activations):
+            curr_out = f(l(curr_out))
         return curr_out
 
 def to_torch(matrix):
@@ -77,8 +91,8 @@ def to_torch(matrix):
 def train(inputs, digits):
     # TODO: compare with what pytorch does
     num_features = inputs.shape[0]
-    middle_size = MIDDLE_SIZE
-    half_num_layers = N_LAYERS // 2
+    middle_size = int(MIDDLE_SIZE)
+    half_num_layers = int(N_LAYERS) // 2
     def make_layer(size_in, size_out):
         return FCLayer((size_in, size_out), LinearActivationFunction())
         # return (size_in, size_out)
@@ -116,8 +130,9 @@ def train(inputs, digits):
     # torch_out = tnet(tad.Variable(tch.Tensor(digit_in.T))).data.numpy()
     # show_digit(torch_out.reshape(digit_size, digit_size))
 
-    torch_sgd(ae, tnet, inputs, num_epoch=NUM_EPOCH,
-              minibatch_size=MINIBATCH_SIZE, display=True)
+    torch_loss, my_loss = torch_sgd(ae, tnet, inputs, num_epoch=NUM_EPOCH,
+                                    minibatch_size=MINIBATCH_SIZE,
+                                    display=True)
 
     for digit_in in digits:
         digit_in = digit_in.reshape((-1, 1))
@@ -125,22 +140,32 @@ def train(inputs, digits):
         print("input:")
         utils.show_digit(digit_in.reshape(digit_size, digit_size))
 
-        digit_out = tnet(to_torch(digit_in.T)).data.numpy()
-        print("torch output:")
-        utils.show_digit(digit_out.reshape(digit_size, digit_size))
+        if int(DO_TORCH):
+            digit_out = tnet(to_torch(digit_in.T)).data.numpy()
+            print("torch output:")
+            utils.show_digit(digit_out.reshape(digit_size, digit_size))
 
-        digit_out = ae.net.compute_outputs(digit_in)
-        print("my output:")
-        utils.show_digit(digit_out.reshape(digit_size, digit_size))
+        if int(DO_MINE):
+            digit_out = ae.net.compute_outputs(digit_in)
+            print("my output:")
+            utils.show_digit(digit_out.reshape(digit_size, digit_size))
+        print('my loss: {:0.4f} torch loss: {:0.4f}'.format(my_loss,
+                                                            torch_loss))
 
-    # ae.run_sgd(inputs, num_epoch=NUM_EPOCH, minibatch_size=MINIBATCH_SIZE,
+    # ae.run_sgd(inputs, num_epoch=int(NUM_EPOCH), minibatch_size=int(MINIBATCH_SIZE),
     #            display=True)
 
-def torch_sgd(ae, net, inputs, num_epoch=NUM_EPOCH,
-              minibatch_size=MINIBATCH_SIZE, display=True):
+def torch_sgd(ae, net, inputs, num_epoch=int(NUM_EPOCH),
+              minibatch_size=int(MINIBATCH_SIZE), display=True):
     momentum = 0.9
-    step_size = 0.01
-    optimizer = tch.optim.SGD(net.parameters(), lr=step_size)
+    if OPTIM == 'sgd':
+        optimizer = tch.optim.SGD(net.parameters(), lr=STEP_SIZE)
+    elif OPTIM == 'rms':
+        optimizer = tch.optim.RMSprop(net.parameters(), lr=STEP_SIZE)
+    elif OPTIM == 'adam':
+        optimizer = tch.optim.Adam(net.parameters(), lr=STEP_SIZE)
+    else:
+        raise Exception('unknown optimization strat: "{}"'.format(OPTIM))
     import time
     start_time = time.time()
 
@@ -154,7 +179,7 @@ def torch_sgd(ae, net, inputs, num_epoch=NUM_EPOCH,
     for epoch in range(num_epoch):
         minibatch = utils.get_random_sample(inputs, minibatch_size)
 
-        if DO_TORCH:
+        if int(DO_TORCH):
             # torch
             torch_minibatch = to_torch(minibatch.T)
             optimizer.zero_grad()
@@ -174,7 +199,7 @@ def torch_sgd(ae, net, inputs, num_epoch=NUM_EPOCH,
 
             optimizer.step()
 
-        if DO_MINE:
+        if int(DO_MINE):
             # mine
             old_weights = ae.net.get_weights()
             # θ ̃← θ + αv
@@ -183,7 +208,7 @@ def torch_sgd(ae, net, inputs, num_epoch=NUM_EPOCH,
             train_loss, train_grad = ae.compute_loss(minibatch)
             train_grad = train_grad / np.linalg.norm(train_grad)
             # v ← αv − εg
-            velocity = momentum * velocity - step_size * train_grad
+            velocity = momentum * velocity - STEP_SIZE * train_grad
             # θ ← θ + v
             new_weights = old_weights + velocity
 
@@ -206,6 +231,7 @@ def torch_sgd(ae, net, inputs, num_epoch=NUM_EPOCH,
                 e=epoch,
                 t=(time.time() - start_time)
             ))
+    return torch_loss, train_loss
 
 def test_grad():
     layer = FCLayer((3, 3), LinearActivationFunction())
@@ -226,6 +252,19 @@ def test_data(data):
     print(data[1][index])
 
 if __name__ == "__main__":
+    for arg in sys.argv[1:]:
+        if arg.count('=') == 1:
+            var, val = arg.split('=')
+            globals()[var] = val
+
+    NUM_EPOCH = int(NUM_EPOCH)
+    MINIBATCH_SIZE = int(MINIBATCH_SIZE)
+    N_LAYERS = int(N_LAYERS)
+    STEP_SIZE = float(STEP_SIZE)
+    DO_TORCH = bool(int(DO_TORCH))
+    DO_MINE = bool(int(DO_MINE))
+    MIDDLE_SIZE = int(MIDDLE_SIZE)
+
     data = read_mnist('mnist', normalize=True)
     # test_data(data)
 
