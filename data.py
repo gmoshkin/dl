@@ -29,3 +29,12 @@ def get_inputs(mnist_data):
     # out: shape = [num_features x num_objects], values in 0..1
     num_objects, object_height, object_width = mnist_data.shape
     return mnist_data.reshape(-1, object_height * object_width).transpose() / np.max(mnist_data)
+
+def get_digits(images, labels):
+    digits = []
+    for i in range(10):
+        for label, image in zip(labels, images):
+            if i == label:
+                digits.append(image)
+                break
+    return digits

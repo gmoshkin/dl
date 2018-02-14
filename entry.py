@@ -10,15 +10,19 @@ import numpy as np
 from numpy import array, matrix
 from autoencoder import Autoencoder
 from utils import flatten, randmatrix, randvector, lerp, show_digit
-from data import read_mnist, get_inputs
+from data import read_mnist, get_inputs, get_digits
 import sys
 import torch as tch
 import torch.nn as tnn
 import torch.autograd as tad
+import utils
 
 NUM_EPOCH = 1000
 MINIBATCH_SIZE=200
 N_LAYERS = 4
+DO_TORCH = True
+DO_MINE = False
+MIDDLE_SIZE = 10
 
 def gen_net(input_dims, mid_layer_dims, n_layers, activation_function):
     layers_dims_half = [input_dims]
@@ -57,7 +61,7 @@ class TorchModel(tnn.Module):
         super(TorchModel, self).__init__()
         self.layers = []
         for i, ml in enumerate(my_layers):
-            new_layer = tnn.Linear(*ml.shape, bias=False)
+            new_layer = tnn.Linear(*ml.shape, bias=True)
             self.layers.append(new_layer)
             self.__setattr__('layer_{}'.format(i), new_layer)
 
@@ -67,10 +71,13 @@ class TorchModel(tnn.Module):
             curr_out = l(curr_out)
         return curr_out
 
-def train(inputs):
+def to_torch(matrix):
+    return tad.Variable(tch.Tensor(matrix))
+
+def train(inputs, digits):
     # TODO: compare with what pytorch does
     num_features = inputs.shape[0]
-    middle_size = 2
+    middle_size = MIDDLE_SIZE
     half_num_layers = N_LAYERS // 2
     def make_layer(size_in, size_out):
         return FCLayer((size_in, size_out), LinearActivationFunction())
@@ -83,65 +90,119 @@ def train(inputs):
     ae = Autoencoder(layers)
     ae.init_weights()
     print('Network has {} parameters'.format(ae.net.params_number))
+    print('min val', min([np.min(l.get_weights()) for l in ae.net.layers]))
+    print('max val', max([np.max(l.get_weights()) for l in ae.net.layers]))
 
-    digit_in = inputs[:,0].reshape(-1, 1)
-    digit_size = int(np.sqrt(digit_in.size))
-    show_digit(digit_in.reshape(digit_size, digit_size))
+    # digit_in = inputs[:,0].reshape(-1, 1)
+    # digit_size = int(np.sqrt(digit_in.size))
+    # show_digit(digit_in.reshape(digit_size, digit_size))
 
-    print('my net before:')
-    my_out = ae.net.compute_outputs(digit_in)
-    show_digit(my_out.reshape(digit_size, digit_size))
+    # print('my net before:')
+    # my_out = ae.net.compute_outputs(digit_in)
+    # show_digit(my_out.reshape(digit_size, digit_size))
 
     tnet = TorchModel(ae.net.layers)
-    for p, l in zip(tnet.parameters(), ae.net.layers):
-        l.set_weights(p.data.numpy().flatten())
+    # for p, l in zip(tnet.parameters(), ae.net.layers):
+    #     l.set_weights(p.data.numpy().flatten())
 
-    print('my net after:')
-    my_out = ae.net.compute_outputs(digit_in)
-    show_digit(my_out.reshape(digit_size, digit_size))
+    print('min val', min([np.min(l.get_weights()) for l in ae.net.layers]))
+    print('max val', max([np.max(l.get_weights()) for l in ae.net.layers]))
 
-    print('torch net:')
-    torch_out = tnet(tad.Variable(tch.Tensor(digit_in.T))).data.numpy()
-    show_digit(torch_out.reshape(digit_size, digit_size))
+    # print('my net after:')
+    # my_out = ae.net.compute_outputs(digit_in)
+    # show_digit(my_out.reshape(digit_size, digit_size))
 
-    torch_sgd(tnet, inputs, num_epoch=NUM_EPOCH, minibatch_size=MINIBATCH_SIZE,
-              display=True)
+    # print('torch net:')
+    # torch_out = tnet(tad.Variable(tch.Tensor(digit_in.T))).data.numpy()
+    # show_digit(torch_out.reshape(digit_size, digit_size))
+
+    torch_sgd(ae, tnet, inputs, num_epoch=NUM_EPOCH,
+              minibatch_size=MINIBATCH_SIZE, display=True)
+
+    for digit_in in digits:
+        digit_in = digit_in.reshape((-1, 1))
+        digit_size = int(np.sqrt(digit_in.size))
+        print("input:")
+        utils.show_digit(digit_in.reshape(digit_size, digit_size))
+
+        digit_out = tnet(to_torch(digit_in.T)).data.numpy()
+        print("torch output:")
+        utils.show_digit(digit_out.reshape(digit_size, digit_size))
+
+        digit_out = ae.net.compute_outputs(digit_in)
+        print("my output:")
+        utils.show_digit(digit_out.reshape(digit_size, digit_size))
+
     # ae.run_sgd(inputs, num_epoch=NUM_EPOCH, minibatch_size=MINIBATCH_SIZE,
     #            display=True)
 
-def torch_sgd(net, inputs, num_epoch=NUM_EPOCH, minibatch_size=MINIBATCH_SIZE,
-              display=True):
-    optimizer = tch.optim.SGD(net.parameters(), lr=.01)
-    import time, utils
+def torch_sgd(ae, net, inputs, num_epoch=NUM_EPOCH,
+              minibatch_size=MINIBATCH_SIZE, display=True):
+    momentum = 0.9
+    step_size = 0.01
+    optimizer = tch.optim.SGD(net.parameters(), lr=step_size)
+    import time
     start_time = time.time()
 
     def count_loss(inputs, outputs):
         return ((inputs - outputs) ** 2).sum() / 2 / inputs.size()[1]
-    def to_torch(matrix):
-        return tad.Variable(tch.Tensor(matrix))
+
+    velocity = np.zeros(ae.net.params_number)
+    torch_loss = -1
+    train_loss = -1
 
     for epoch in range(num_epoch):
         minibatch = utils.get_random_sample(inputs, minibatch_size)
-        torch_minibatch = to_torch(minibatch.T)
-        optimizer.zero_grad()
-        outputs = net(torch_minibatch)
-        loss = count_loss(torch_minibatch, outputs)
-        loss.backward()
 
-        if epoch % 20 == 0:
-            digit_in = minibatch[:,0]
-            digit_size = int(np.sqrt(digit_in.size))
-            print("input:")
-            utils.show_digit(digit_in.reshape(digit_size, digit_size))
-            digit_out = net(to_torch(digit_in.T)).data.numpy()
-            print("output:")
-            utils.show_digit(digit_out.reshape(digit_size, digit_size))
+        if DO_TORCH:
+            # torch
+            torch_minibatch = to_torch(minibatch.T)
+            optimizer.zero_grad()
+            outputs = net(torch_minibatch)
+            loss = count_loss(torch_minibatch, outputs)
+            loss.backward()
+            torch_loss = loss.data[0]
 
-        optimizer.step()
+            if epoch % 20 == 0:
+                digit_in = minibatch[:,0]
+                digit_size = int(np.sqrt(digit_in.size))
+                print("input:")
+                utils.show_digit(digit_in.reshape(digit_size, digit_size))
+                digit_out = net(to_torch(digit_in.T)).data.numpy()
+                print("torch output:")
+                utils.show_digit(digit_out.reshape(digit_size, digit_size))
+
+            optimizer.step()
+
+        if DO_MINE:
+            # mine
+            old_weights = ae.net.get_weights()
+            # θ ̃← θ + αv
+            ae.net.set_weights(old_weights + momentum * velocity)
+            # L(x, f(x|θ ̃)), ∇_(θ ̃)L
+            train_loss, train_grad = ae.compute_loss(minibatch)
+            train_grad = train_grad / np.linalg.norm(train_grad)
+            # v ← αv − εg
+            velocity = momentum * velocity - step_size * train_grad
+            # θ ← θ + v
+            new_weights = old_weights + velocity
+
+            if epoch % 20 == 0:
+                digit_in = minibatch[:,0]
+                digit_size = int(np.sqrt(digit_in.size))
+                print("input:")
+                utils.show_digit(digit_in.reshape(digit_size, digit_size))
+                digit_out = ae.net.compute_outputs(digit_in)
+                print("my output:")
+                utils.show_digit(digit_out.reshape(digit_size, digit_size))
+
+            ae.net.set_weights(new_weights)
 
         if display:
-            print("[{e}] loss: {l:0.4f} time: {t:0.2f}s".format(
-                l=loss.data[0],
+            print("[{e}] torch loss: {tl:0.4f} my loss: {ml:0.4f} ratio: {lr:0.4f} time: {t:0.2f}s".format(
+                tl=torch_loss,
+                ml=train_loss,
+                lr=torch_loss / (train_loss or 1),
                 e=epoch,
                 t=(time.time() - start_time)
             ))
@@ -168,7 +229,7 @@ if __name__ == "__main__":
     data = read_mnist('mnist', normalize=True)
     # test_data(data)
 
-    train(get_inputs(data[0]))
+    train(get_inputs(data[0]), get_digits(data[0], data[1]))
     # test_grad()
 
     sys.exit(0)
