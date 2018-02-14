@@ -40,7 +40,8 @@ def lerp(left, right, i, N):
     return left * (1 - i * 1/N) + right * (i * 1/N)
 
 def show_digit(digit, #lo=0, hi=255,
-               bg=np.array((0, 43, 54)), fg=np.array((147, 161, 161))):
+               bg=np.array((0, 43, 54)), fg=np.array((147, 161, 161)),
+               pixels=True):
     min_val, max_val = np.min(digit), np.max(digit)
     print("min:", min_val, "max:", max_val)
     normalized = (digit - min_val) / (max_val - min_val)
@@ -50,7 +51,23 @@ def show_digit(digit, #lo=0, hi=255,
         # perc = (cell - lo) / hi - lo
         r, g, b = (bg * (1 - cell) + fg * cell).astype(int)
         print('\033[48;2;{r};{g};{b}m  \033[0m'.format(r=r, g=g, b=b), end='')
-    for row in normalized:
-        for cell in np.nditer(row):
-            show_cell(cell)
-        print()
+    def show_double_spaces():
+        for row in normalized:
+            for cell in np.nditer(row):
+                show_cell(cell)
+            print()
+    def show_2cell(top, bot):
+        tR, tG, tB = (bg * (1 - top) + fg * top).astype(int)
+        bR, bG, bB = (bg * (1 - bot) + fg * bot).astype(int)
+        print('\033[48;2;{tR};{tG};{tB}m\033[38;2;{bR};{bG};{bB}m\u2584\033[0m'.format(
+            tR=tR, tG=tG, tB=tB, bR=bR, bG=bG, bB=bB
+        ), end='')
+    def show_pixels():
+        for top_row, bot_row in zip(*([iter(normalized)] * 2)):
+            for top, bot in zip(np.nditer(top_row), np.nditer(bot_row)):
+                show_2cell(top, bot)
+            print()
+    if pixels:
+        show_pixels()
+    else:
+        show_double_spaces()
