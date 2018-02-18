@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
 from ffnet import FFNet
 from layers import FCLayer
 from activations import (
@@ -16,18 +17,25 @@ import torch as tch
 import torch.nn as tnn
 import torch.autograd as tad
 import utils
+import datetime
 
-NUM_EPOCH = 1000
-MINIBATCH_SIZE=200
+NUM_EPOCH = 64
+MINIBATCH_SIZE=50
 N_LAYERS = 4
 STEP_SIZE = 0.01
-DO_TORCH = True
-DO_MINE = False
-MIDDLE_SIZE = 10
-ACTIVATIONS = 'sigmoid'
+DO_TORCH = False
+DO_MINE = True
+MIDDLE_SIZE = 2
+ACTIVATIONS = 'linear'
 # ACTIVATIONS = 'relu'
 # ACTIVATIONS = 'linear'
-OPTIM = 'sgd' # 'adam' 'rms'
+OPTIM = 'adam' # 'sgd' 'adam' 'rms'
+SHOW_DIGITS = False
+WEIGHT_DECAY = .4
+USE_BIAS = False
+VIS_DIGITS = False
+VIS_MID_LAYER = False
+COPY_TORCH_WEIGHTS = False
 
 def gen_net(input_dims, mid_layer_dims, n_layers, activation_function):
     layers_dims_half = [input_dims]
@@ -66,8 +74,9 @@ class TorchModel(tnn.Module):
         super(TorchModel, self).__init__()
         self.layers = []
         self.activations = []
+        self.layer_outputs = []
         for i, ml in enumerate(my_layers):
-            new_layer = tnn.Linear(*ml.shape, bias=True)
+            new_layer = tnn.Linear(*ml.shape, bias=USE_BIAS)
             self.layers.append(new_layer)
             self.__setattr__('layer_{}'.format(i), new_layer)
             if ACTIVATIONS == 'sigmoid':
@@ -80,30 +89,52 @@ class TorchModel(tnn.Module):
             self.__setattr__('activation_{}'.format(i), new_activation)
 
     def forward(self, inputs):
-        curr_out = inputs
+        self.layer_outputs = [inputs]
         for l, f in zip(self.layers, self.activations):
+            self.layer_outputs.append(f(l(self.layer_outputs[-1])))
+        return self.layer_outputs[-1]
+
+    def decode(self, inputs):
+        curr_out = inputs
+        for l, f in zip(self.layers[N_LAYERS // 2:],
+                        self.activations[N_LAYERS // 2:]):
             curr_out = f(l(curr_out))
         return curr_out
 
 def to_torch(matrix):
     return tad.Variable(tch.Tensor(matrix))
 
-def train(inputs, digits):
-    # TODO: compare with what pytorch does
-    num_features = inputs.shape[0]
-    middle_size = int(MIDDLE_SIZE)
-    half_num_layers = int(N_LAYERS) // 2
+def get_globals():
+    import re
+    regex = re.compile('^[A-Z_]+$')
+    res = []
+    for k, v in globals().items():
+        if regex.match(k):
+            res.append("{}={}".format(k, v))
+    return ', '.join(res)
+
+def gen_layers(num_features):
+    middle_size = MIDDLE_SIZE
+    half_num_layers = N_LAYERS // 2
     def make_layer(size_in, size_out):
         return FCLayer((size_in, size_out), LinearActivationFunction())
-        # return (size_in, size_out)
     layers = []
     for i in range(half_num_layers):
-        lesser = int(lerp(middle_size, num_features, i, half_num_layers))
-        greater = int(lerp(middle_size, num_features, i + 1, half_num_layers))
+        lesser = int(lerp(middle_size, num_features, i / half_num_layers))
+        greater = int(lerp(middle_size, num_features, (i + 1) / half_num_layers))
         layers = [make_layer(greater, lesser)] + layers + [make_layer(lesser, greater)]
-    ae = Autoencoder(layers)
+    return layers
+
+def copy_weights(tnet, ae):
+    for p, l in zip(tnet.parameters(), ae.net.layers):
+        l.set_weights(p.data.numpy().flatten())
+
+def train(inputs, validation, digits):
+    # TODO: compare with what pytorch does
+    ae = Autoencoder(gen_layers(inputs.shape[0]))
     ae.init_weights()
     print('Network has {} parameters'.format(ae.net.params_number))
+
     print('min val', min([np.min(l.get_weights()) for l in ae.net.layers]))
     print('max val', max([np.max(l.get_weights()) for l in ae.net.layers]))
 
@@ -116,8 +147,9 @@ def train(inputs, digits):
     # show_digit(my_out.reshape(digit_size, digit_size))
 
     tnet = TorchModel(ae.net.layers)
-    # for p, l in zip(tnet.parameters(), ae.net.layers):
-    #     l.set_weights(p.data.numpy().flatten())
+
+    if COPY_TORCH_WEIGHTS:
+        copy_weights(tnet, ae)
 
     print('min val', min([np.min(l.get_weights()) for l in ae.net.layers]))
     print('max val', max([np.max(l.get_weights()) for l in ae.net.layers]))
@@ -130,10 +162,29 @@ def train(inputs, digits):
     # torch_out = tnet(tad.Variable(tch.Tensor(digit_in.T))).data.numpy()
     # show_digit(torch_out.reshape(digit_size, digit_size))
 
-    torch_loss, my_loss = torch_sgd(ae, tnet, inputs, num_epoch=NUM_EPOCH,
-                                    minibatch_size=MINIBATCH_SIZE,
-                                    display=True)
+    stats = torch_sgd(
+        ae, tnet, inputs, validation, num_epoch=NUM_EPOCH,
+        minibatch_size=MINIBATCH_SIZE, display=True
+    )
 
+    digit_size = int(np.sqrt(ae.net.layers[0].shape[0]))
+
+    if VIS_DIGITS:
+        visualize_digits(tnet, ae, digits, digit_size)
+
+    date_string = datetime.datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+
+    if VIS_MID_LAYER:
+        visualize_middle_layer(tnet, digit_size,
+                               filename='visualization_{}.png'.format(date_string))
+
+    save_stats(stats, filename='stats_{}'.format(date_string))
+
+    # ae.run_sgd(inputs, num_epoch=int(NUM_EPOCH), minibatch_size=int(MINIBATCH_SIZE),
+    #            display=True)
+
+
+def visualize_digits(tnet, ae, digits, digit_size):
     for digit_in in digits:
         digit_in = digit_in.reshape((-1, 1))
         digit_size = int(np.sqrt(digit_in.size))
@@ -144,52 +195,99 @@ def train(inputs, digits):
             digit_out = tnet(to_torch(digit_in.T)).data.numpy()
             print("torch output:")
             utils.show_digit(digit_out.reshape(digit_size, digit_size))
+            print("torch middle layer:", tnet.layer_outputs[N_LAYERS // 2])
 
         if int(DO_MINE):
             digit_out = ae.net.compute_outputs(digit_in)
             print("my output:")
             utils.show_digit(digit_out.reshape(digit_size, digit_size))
-        print('my loss: {:0.4f} torch loss: {:0.4f}'.format(my_loss,
-                                                            torch_loss))
+            print("mid layer out:", ae.net.layers[N_LAYERS // 2 - 1].activations.flatten())
 
-    # ae.run_sgd(inputs, num_epoch=int(NUM_EPOCH), minibatch_size=int(MINIBATCH_SIZE),
-    #            display=True)
+def visualize_middle_layer(tnet, digit_size, filename):
+    left, right = -2, 2
+    steps = 40
+    visualization = []
+    for i in range(steps):
+        row = []
+        y = lerp(left, right, i/(steps - 1))
+        for j in range(steps):
+            # print('decoding ', one, two)
+            x = lerp(left, right, j/(steps - 1))
+            # print('[{:0.3f}, {:0.3f}]'.format(x, y), end=' ')
+            out = tnet.decode(to_torch(matrix((x, y)))).data.numpy()
+            row.append(out.reshape(digit_size, digit_size))
+        # utils.show_digit(np.concatenate(row, axis=1))
+        visualization.append(np.concatenate(row, axis=1))
+    vis = np.concatenate(visualization, axis=0)
 
-def torch_sgd(ae, net, inputs, num_epoch=int(NUM_EPOCH),
-              minibatch_size=int(MINIBATCH_SIZE), display=True):
+    utils.save_image(vis, filename)
+
+def save_stats(stats, filename):
+    stat = get_globals()
+    stat += '\nmine train: {mt:0.4f} test: {mv:0.4f} torch train: {tt:0.4f} test: {tv:0.4f} time spent: {t:0.2f}'.format(
+        mt=stats['my_train_loss'],
+        tt=stats['torch_train_loss'],
+        t=stats['time'],
+        mv=stats['my_test_loss'],
+        tv=stats['torch_test_loss']
+    )
+    with open(filename, 'w') as f:
+        print(stat, file=f)
+    print(stat)
+
+def count_loss(inputs, outputs):
+    return ((inputs - outputs) ** 2).sum() / 2 / inputs.size()[0]
+
+torch_outputs = None
+my_outputs = None
+
+def torch_sgd(ae, net, inputs, validation=None, num_epoch=int(NUM_EPOCH),
+              minibatch_size=int(MINIBATCH_SIZE), display=False):
     momentum = 0.9
     if OPTIM == 'sgd':
-        optimizer = tch.optim.SGD(net.parameters(), lr=STEP_SIZE)
+        optimizer = tch.optim.SGD(net.parameters(), lr=STEP_SIZE,
+                                  weight_decay=WEIGHT_DECAY)
     elif OPTIM == 'rms':
-        optimizer = tch.optim.RMSprop(net.parameters(), lr=STEP_SIZE)
+        optimizer = tch.optim.RMSprop(net.parameters(), lr=STEP_SIZE,
+                                      weight_decay=WEIGHT_DECAY)
     elif OPTIM == 'adam':
-        optimizer = tch.optim.Adam(net.parameters(), lr=STEP_SIZE)
+        optimizer = tch.optim.Adam(net.parameters(), lr=STEP_SIZE,
+                                   weight_decay=WEIGHT_DECAY)
     else:
         raise Exception('unknown optimization strat: "{}"'.format(OPTIM))
     import time
     start_time = time.time()
 
-    def count_loss(inputs, outputs):
-        return ((inputs - outputs) ** 2).sum() / 2 / inputs.size()[1]
-
     velocity = np.zeros(ae.net.params_number)
     torch_loss = -1
     train_loss = -1
+    torch_test_loss = -1
+    test_loss = -1
+
+    loss_func = tnn.MSELoss()
+    def count_loss(inputs, outputs):
+        print(inputs.size(), outputs.size())
+        return loss_func(inputs, outputs)
 
     for epoch in range(num_epoch):
         minibatch = utils.get_random_sample(inputs, minibatch_size)
+        if validation is not None:
+            valid_batch = utils.get_random_sample(validation, minibatch_size)
 
         if int(DO_TORCH):
             # torch
             torch_minibatch = to_torch(minibatch.T)
             optimizer.zero_grad()
             outputs = net(torch_minibatch)
-            loss = count_loss(torch_minibatch, outputs)
+            loss = count_loss(outputs, torch_minibatch)
             loss.backward()
             torch_loss = loss.data[0]
 
-            if epoch % 20 == 0:
-                digit_in = minibatch[:,0]
+            torch_valid = to_torch(valid_batch.T)
+            torch_test_loss = count_loss(net(torch_valid), torch_valid).data[0]
+
+            if epoch % 20 == 0 and SHOW_DIGITS:
+                digit_in = valid_batch[:,0]
                 digit_size = int(np.sqrt(digit_in.size))
                 print("input:")
                 utils.show_digit(digit_in.reshape(digit_size, digit_size))
@@ -206,14 +304,16 @@ def torch_sgd(ae, net, inputs, num_epoch=int(NUM_EPOCH),
             ae.net.set_weights(old_weights + momentum * velocity)
             # L(x, f(x|θ ̃)), ∇_(θ ̃)L
             train_loss, train_grad = ae.compute_loss(minibatch)
-            train_grad = train_grad / np.linalg.norm(train_grad)
+            test_loss = np.power(minibatch - ae.net.layers[-1].activations, 2).sum() / 2 / MINIBATCH_SIZE
+
+            # train_grad = train_grad / np.linalg.norm(train_grad)
             # v ← αv − εg
             velocity = momentum * velocity - STEP_SIZE * train_grad
             # θ ← θ + v
             new_weights = old_weights + velocity
 
-            if epoch % 20 == 0:
-                digit_in = minibatch[:,0]
+            if epoch % 20 == 0 and SHOW_DIGITS:
+                digit_in = valid_batch[:,0]
                 digit_size = int(np.sqrt(digit_in.size))
                 print("input:")
                 utils.show_digit(digit_in.reshape(digit_size, digit_size))
@@ -224,19 +324,39 @@ def torch_sgd(ae, net, inputs, num_epoch=int(NUM_EPOCH),
             ae.net.set_weights(new_weights)
 
         if display:
-            print("[{e}] torch loss: {tl:0.4f} my loss: {ml:0.4f} ratio: {lr:0.4f} time: {t:0.2f}s".format(
-                tl=torch_loss,
-                ml=train_loss,
+            print("[{e}] torch train: {tl:0.3f} test: {tv:0.3f} my train: {ml:0.3f} test: {mv:0.3f} ratio: {lr:0.3f} time: {t:0.2f}s".format(
+                tl=torch_loss, tv=torch_test_loss,
+                ml=train_loss, mv=test_loss,
                 lr=torch_loss / (train_loss or 1),
                 e=epoch,
                 t=(time.time() - start_time)
             ))
-    return torch_loss, train_loss
+
+    return {
+        'torch_train_loss' : torch_loss,
+        'torch_test_loss'  : torch_test_loss,
+        'my_train_loss'    : train_loss,
+        'my_test_loss'     : test_loss,
+        'time'             : (time.time() - start_time),
+    }
 
 def test_grad():
     layer = FCLayer((3, 3), LinearActivationFunction())
     layer.set_weights(matrix('1 2 4;2 1 3;1 3 1'))
     net = FFNet([layer])
+
+    class Tmp(tnn.Module):
+        def __init__(self, my_layer):
+            super(Tmp, self).__init__()
+            self.layer = tnn.Linear(*my_layer.shape, bias=False)
+
+        def forward(self, inputs):
+            self.outputs = self.layer(inputs)
+            return self.outputs
+
+    tnet = Tmp(layer)
+    net.layers[0].set_weights(next(tnet.parameters()).data.numpy().flatten())
+
     inputs = matrix('1;1;1')
     print('inputs:', inputs)
     outputs = net.compute_outputs(inputs)
@@ -246,9 +366,24 @@ def test_grad():
     loss_grad = net.compute_loss_grad(loss_derivs)
     print('loss_grad:', loss_grad)
 
+    t_inputs = to_torch(inputs.T)
+    t_outputs = tnet(t_inputs)
+    print('t_outputs:', t_outputs)
+    t_loss = count_loss(t_inputs, t_outputs)
+    print('t_loss:', t_loss)
+    t_loss.backward()
+    print('loss_grad:', t_loss.grad)
+    print('loss_grad:', t_outputs.grad)
+    print('loss_grad:', t_inputs.grad)
+
+
+
+
+
 def test_data(data):
     index = np.random.randint(data[0].shape[0])
     show_digit(data[0][index])
+    utils.save_image(data[0][index], 'test.png')
     print(data[1][index])
 
 if __name__ == "__main__":
@@ -264,11 +399,19 @@ if __name__ == "__main__":
     DO_TORCH = bool(int(DO_TORCH))
     DO_MINE = bool(int(DO_MINE))
     MIDDLE_SIZE = int(MIDDLE_SIZE)
+    WEIGHT_DECAY = float(WEIGHT_DECAY)
+    USE_BIAS = bool(int(USE_BIAS))
+    VIS_DIGITS = bool(int(VIS_DIGITS))
+    VIS_MID_LAYER = bool(int(VIS_MID_LAYER))
+    COPY_TORCH_WEIGHTS = bool(int(COPY_TORCH_WEIGHTS))
 
-    data = read_mnist('mnist', normalize=True)
+    data = read_mnist('/home/gmoshkin/cmc/dl/autoencoder/mnist', normalize=True)
     # test_data(data)
 
-    train(get_inputs(data[0]), get_digits(data[0], data[1]))
+
+    train(get_inputs(data[0]), get_inputs(data[2]),
+          get_digits(data[0], data[1]))
+
     # test_grad()
 
     sys.exit(0)

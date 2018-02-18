@@ -36,8 +36,8 @@ def get_random_sample(inputs, batch_size):
         sample_objects.append(inputs[:,i])
     return np.matrix(sample_objects).transpose()
 
-def lerp(left, right, i, N):
-    return left * (1 - i * 1/N) + right * (i * 1/N)
+def lerp(left, right, ratio):
+    return left * (1 - ratio) + right * ratio
 
 def show_digit(digit, #lo=0, hi=255,
                bg=np.array((0, 43, 54)), fg=np.array((147, 161, 161)),
@@ -71,3 +71,10 @@ def show_digit(digit, #lo=0, hi=255,
         show_pixels()
     else:
         show_double_spaces()
+
+def save_image(data, filename):
+    from PIL import Image
+    min_val, max_val = np.min(data), np.max(data)
+    normalized = (data - min_val) / (max_val - min_val)
+    im = Image.fromarray(np.uint8(normalized*255))
+    im.save(filename)
