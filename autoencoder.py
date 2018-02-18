@@ -206,4 +206,6 @@ class Autoencoder:
 
     def init_weights(self):
         for l in self.net.layers:
-            l.set_weights(np.random.rand(l.get_params_number()) * 2 - 1)
+            n_in, n_out = l.shape
+            l.set_weights(np.random.normal(loc=0, scale=1/n_in,
+                                           size=l.get_params_number()))
